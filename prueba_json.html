@@ -9,12 +9,7 @@
 			var usuarioActual = null; // Variable para almacenar el usuario actual logueado
 			var foto = null;  // por default la foto es nula
 			var fotoArticulo = null; // para las fotos de artículos
-			
-			// Al cargar la página, mostrar login y ocultar menú
-			window.onload = function() {
-				oculta("menu");
-				muestra("login");
-			};
+			var pantallaSolicitada = null; // Almacena la pantalla que el usuario intentó abrir antes de login
 			
 			function get(id)
 			{
@@ -38,6 +33,17 @@
 			{
 				oculta(id);
 				muestra("menu");
+			}
+			
+			// Función para verificar si el usuario está autenticado
+			function verificaAutenticacion(pantalla) {
+				if (usuarioActual == null) {
+					// Usuario no autenticado, guardamos la pantalla solicitada y mostramos login
+					pantallaSolicitada = pantalla;
+					muestra_pantalla('login');
+					return false;
+				}
+				return true;
 			}
 			
 			// Función para realizar el login
@@ -68,12 +74,25 @@
 						get("login_email").value = "";
 						get("login_password").value = "";
 						
-						// Mostrar menú principal
-						oculta("login");
-						muestra("menu");
-						
 						// Mostrar mensaje de bienvenida
 						alert("Bienvenido " + result.nombre);
+						
+						// Redirigir a la pantalla que intentó acceder originalmente
+						if (pantallaSolicitada) {
+							// Si hay una pantalla solicitada, la mostramos
+							if (pantallaSolicitada === 'captura_articulo') {
+								limpia_articulo();
+								muestra_pantalla('captura_articulo');
+							} else if (pantallaSolicitada === 'compra_articulos') {
+								iniciar_compra();
+								muestra_pantalla('compra_articulos');
+							}
+							pantallaSolicitada = null; // Limpiamos la variable
+						} else {
+							// Si no hay pantalla solicitada, volvemos al menú
+							oculta("login");
+							muestra("menu");
+						}
 					} else {
 						alert("Error de autenticación: " + result.mensaje);
 					}
@@ -91,8 +110,7 @@
 				function(code, result) {
 					// Independientemente del resultado, cerramos sesión localmente
 					usuarioActual = null;
-					oculta("menu");
-					muestra("login");
+					muestra("menu");
 					alert("Sesión cerrada");
 				});
 			}
@@ -190,7 +208,9 @@
 					descripcion: get("articulo_descripcion").value != "" ? get("articulo_descripcion").value : null,
 					precio: parseFloat(get("articulo_precio").value),
 					cantidad: parseInt(get("articulo_cantidad").value),
-					foto: fotoArticulo
+					foto: fotoArticulo,
+					id_usuario: usuarioActual.id_usuario,
+					token: usuarioActual.token
 				};
 				
 				cliente.postJson("alta_articulo",
@@ -348,6 +368,9 @@
 				var cliente = new WSClient(URL);
 				cliente.postJson("consulta_articulos", 
 				{
+					palabra_clave: "", // Sin filtro
+					id_usuario: usuarioActual.id_usuario,
+					token: usuarioActual.token
 				},
 				function(code, result) {
 					if (code == 200) {
@@ -384,10 +407,12 @@
 				var cliente = new WSClient(URL);
 				var cantidad = parseInt(get("cantidad_" + id_articulo).value);
 				
-				cliente.postJson("agregar_al_carrito",
+				cliente.postJson("compra_articulo",
 				{
 					id_articulo: id_articulo,
-					cantidad: cantidad
+					cantidad: cantidad,
+					id_usuario: usuarioActual.id_usuario,
+					token: usuarioActual.token
 				},
 				function(code, result) {
 					if (code == 200) {
@@ -404,7 +429,10 @@
 			function mostrar_carrito() {
 				var cliente = new WSClient(URL);
 				cliente.postJson("consulta_carrito", 
-				{},
+				{
+					id_usuario: usuarioActual.id_usuario,
+					token: usuarioActual.token
+				},
 				function(code, result) {
 					if (code == 200) {
 						var container = get("carrito_compra_items");
@@ -436,9 +464,11 @@
 			// Función para eliminar un artículo del carrito
 			function eliminar_del_carrito(id_articulo) {
 				var cliente = new WSClient(URL);
-				cliente.postJson("eliminar_del_carrito",
+				cliente.postJson("elimina_articulo_carrito_compra",
 				{
-					id_articulo: id_articulo
+					id_articulo: id_articulo,
+					id_usuario: usuarioActual.id_usuario,
+					token: usuarioActual.token
 				},
 				function(code, result) {
 					if (code == 200) {
@@ -453,8 +483,11 @@
 			// Función para realizar la compra
 			function realizar_compra() {
 				var cliente = new WSClient(URL);
-				cliente.postJson("realizar_compra",
-				{},
+				cliente.postJson("elimina_carrito_compra",
+				{
+					id_usuario: usuarioActual.id_usuario,
+					token: usuarioActual.token
+				},
 				function(code, result) {
 					if (code == 200) {
 						alert("¡Compra realizada con éxito!");
@@ -466,11 +499,27 @@
 					}
 				});
 			}
+			
+			// Función para abrir la captura de artículo con verificación de login
+			function abrirCapturaArticulo() {
+				if (verificaAutenticacion('captura_articulo')) {
+					limpia_articulo();
+					muestra_pantalla('captura_articulo');
+				}
+			}
+			
+			// Función para abrir la compra de artículos con verificación de login
+			function abrirCompraArticulos() {
+				if (verificaAutenticacion('compra_articulos')) {
+					iniciar_compra();
+					muestra_pantalla('compra_articulos');
+				}
+			}
 		</script>
 	</head>
 	<body>
 	<div style="width:250px;margin:auto">
-		<!-- Nueva pantalla de login -->
+		<!-- Pantalla de login -->
 		<div id="login" style="display:none">
 			<h2 style="text-align:center">Iniciar Sesión</h2>
 			<div style="margin-top:20px">
@@ -478,7 +527,8 @@
 				<input type="email" id="login_email" value="" style="width:250px"/><br>
 				Contraseña *<br>
 				<input type="password" id="login_password" value="" style="width:250px"/><br><br>
-				<button type="button" onclick="login()" style="width:250px;height:40px">Aceptar</button>
+				<button type="button" onclick="login()" style="width:250px;height:40px">Aceptar</button><br>
+				<button type="button" onclick="muestra('menu'); oculta('login')" style="width:250px;height:40px">Cancelar</button>
 			</div>
 		</div>
 	
@@ -616,12 +666,26 @@
 			<button type="button" onclick="limpia_alta();muestra_pantalla('alta_usuario')" style="width:250px;height:40px">Alta usuario</button></br>
 			<button type="button" onclick="limpia_consulta();muestra_pantalla('consulta_usuario')" style="width:250px;height:40px">Consulta usuario</button></br>
 			<button type="button" onclick="limpia_borra();muestra_pantalla('borra_usuario')" style="width:250px;height:40px">Borra usuario</button></br>
-			<!-- Opciones de menú para artículos -->
-			<button type="button" onclick="limpia_articulo();muestra_pantalla('captura_articulo')" style="width:250px;height:40px">Captura de artículo</button></br>
-			<button type="button" onclick="iniciar_compra();muestra_pantalla('compra_articulos')" style="width:250px;height:40px">Compra de artículos</button></br>
-			<!-- Botón para cerrar sesión -->
-			<button type="button" onclick="logout()" style="width:250px;height:40px;margin-top:20px;background-color:#f88">Cerrar sesión</button></br>
+			<!-- Opciones de menú para artículos con verificación de login -->
+			<button type="button" onclick="abrirCapturaArticulo()" style="width:250px;height:40px">Captura de artículo</button></br>
+			<button type="button" onclick="abrirCompraArticulos()" style="width:250px;height:40px">Compra de artículos</button></br>
+			<!-- Botón para cerrar sesión, solo visible si hay usuario logueado -->
+			<button type="button" id="btn_logout" onclick="logout()" style="width:250px;height:40px;margin-top:20px;background-color:#f88;display:none">Cerrar sesión</button></br>
 		</div>
 	</div>
+	
+	<script>
+		// Función para mostrar/ocultar el botón de logout según el estado de autenticación
+		function actualizarBotonLogout() {
+			if (usuarioActual) {
+				get("btn_logout").style.display = "block";
+			} else {
+				get("btn_logout").style.display = "none";
+			}
+		}
+		
+		// Observador para cambios en usuarioActual
+		setInterval(actualizarBotonLogout, 500);
+	</script>
 	</body>
 </html>

@@ -573,4 +573,487 @@ public class Servicio
       conexion.close();
     }
   }
+
+  @POST
+  @Path("compra_articulo")
+  @Consumes(MediaType.APPLICATION_JSON)
+  @Produces(MediaType.APPLICATION_JSON)
+  public Response compraArticulo(String json) throws Exception
+  {
+    ParamCompraArticulo p = (ParamCompraArticulo) j.fromJson(json, ParamCompraArticulo.class);
+    
+    Connection conexion = pool.getConnection();
+
+    // Validación de parámetros
+    if (p.id_articulo == null)
+      return Response.status(400).entity(j.toJson(new Error("Se debe proporcionar el ID del artículo"))).build();
+      
+    if (p.cantidad == null || p.cantidad <= 0)
+      return Response.status(400).entity(j.toJson(new Error("La cantidad debe ser mayor a cero"))).build();
+      
+    if (p.id_usuario == null)
+      return Response.status(400).entity(j.toJson(new Error("Se debe proporcionar el ID de usuario"))).build();
+      
+    if (p.token == null || p.token.equals(""))
+      return Response.status(400).entity(j.toJson(new Error("Se debe proporcionar el token de autenticación"))).build();
+
+    try
+    {
+      // Verificar que el token corresponda al id_usuario
+      PreparedStatement stmt_token = conexion.prepareStatement("SELECT token FROM usuarios WHERE id_usuario=?");
+      try
+      {
+        stmt_token.setInt(1, p.id_usuario);
+        ResultSet rs = stmt_token.executeQuery();
+        
+        if (!rs.next())
+          return Response.status(401).entity(j.toJson(new Error("El usuario no existe"))).build();
+          
+        String token_guardado = rs.getString("token");
+        rs.close();
+        
+        if (token_guardado == null || !token_guardado.equals(p.token))
+          return Response.status(401).entity(j.toJson(new Error("Token inválido"))).build();
+      }
+      finally
+      {
+        stmt_token.close();
+      }
+
+      // Iniciar transacción
+      conexion.setAutoCommit(false);
+      
+      try
+      {
+        // Verificar si hay suficiente stock
+        PreparedStatement stmt_stock = conexion.prepareStatement("SELECT cantidad FROM stock WHERE id_articulo=? FOR UPDATE");
+        stmt_stock.setInt(1, p.id_articulo);
+        ResultSet rs_stock = stmt_stock.executeQuery();
+        
+        if (!rs_stock.next())
+        {
+          conexion.rollback();
+          return Response.status(400).entity(j.toJson(new Error("El artículo no existe"))).build();
+        }
+        
+        int cantidad_disponible = rs_stock.getInt("cantidad");
+        rs_stock.close();
+        stmt_stock.close();
+        
+        // Verificar si hay suficiente stock
+        if (p.cantidad > cantidad_disponible)
+        {
+          conexion.rollback();
+          return Response.status(400).entity(j.toJson(new Error("No hay suficientes artículos"))).build();
+        }
+        
+        // Insertar en carrito_compra
+        PreparedStatement stmt_carrito = conexion.prepareStatement(
+          "INSERT INTO carrito_compra(id_usuario, id_articulo, cantidad) VALUES (?, ?, ?) " +
+          "ON DUPLICATE KEY UPDATE cantidad = cantidad + ?");
+        
+        stmt_carrito.setInt(1, p.id_usuario);
+        stmt_carrito.setInt(2, p.id_articulo);
+        stmt_carrito.setInt(3, p.cantidad);
+        stmt_carrito.setInt(4, p.cantidad);
+        
+        stmt_carrito.executeUpdate();
+        stmt_carrito.close();
+        
+        // Actualizar el stock
+        PreparedStatement stmt_update = conexion.prepareStatement(
+          "UPDATE stock SET cantidad = cantidad - ? WHERE id_articulo = ?");
+        
+        stmt_update.setInt(1, p.cantidad);
+        stmt_update.setInt(2, p.id_articulo);
+        
+        stmt_update.executeUpdate();
+        stmt_update.close();
+        
+        // Confirmar la transacción
+        conexion.commit();
+        
+        return Response.ok().build();
+      }
+      catch (Exception e)
+      {
+        // Deshacer la transacción en caso de error
+        conexion.rollback();
+        throw e;
+      }
+    }
+    catch (Exception e)
+    {
+      return Response.status(400).entity(j.toJson(new Error(e.getMessage()))).build();
+    }
+    finally
+    {
+      try
+      {
+        conexion.setAutoCommit(true);
+        conexion.close();
+      }
+      catch (Exception e)
+      {
+        // Ignorar errores al cerrar la conexión
+      }
+    }
+  }
+
+  @POST
+  @Path("elimina_articulo_carrito_compra")
+  @Consumes(MediaType.APPLICATION_JSON)
+  @Produces(MediaType.APPLICATION_JSON)
+  public Response eliminaArticuloCarritoCompra(String json) throws Exception
+  {
+    ParamEliminaArticuloCarrito p = (ParamEliminaArticuloCarrito) j.fromJson(json, ParamEliminaArticuloCarrito.class);
+    
+    Connection conexion = pool.getConnection();
+
+    // Validación de parámetros
+    if (p.id_usuario == null)
+      return Response.status(400).entity(j.toJson(new Error("Se debe proporcionar el ID de usuario"))).build();
+      
+    if (p.id_articulo == null)
+      return Response.status(400).entity(j.toJson(new Error("Se debe proporcionar el ID del artículo"))).build();
+      
+    if (p.token == null || p.token.equals(""))
+      return Response.status(400).entity(j.toJson(new Error("Se debe proporcionar el token de autenticación"))).build();
+
+    try
+    {
+      // Verificar que el token corresponda al id_usuario
+      PreparedStatement stmt_token = conexion.prepareStatement("SELECT token FROM usuarios WHERE id_usuario=?");
+      try
+      {
+        stmt_token.setInt(1, p.id_usuario);
+        ResultSet rs = stmt_token.executeQuery();
+        
+        if (!rs.next())
+          return Response.status(401).entity(j.toJson(new Error("El usuario no existe"))).build();
+          
+        String token_guardado = rs.getString("token");
+        rs.close();
+        
+        if (token_guardado == null || !token_guardado.equals(p.token))
+          return Response.status(401).entity(j.toJson(new Error("Token inválido"))).build();
+      }
+      finally
+      {
+        stmt_token.close();
+      }
+
+      // Iniciar transacción
+      conexion.setAutoCommit(false);
+      
+      try
+      {
+        // Primero, obtener la cantidad de artículos en el carrito
+        PreparedStatement stmt_cantidad = conexion.prepareStatement(
+          "SELECT cantidad FROM carrito_compra WHERE id_usuario=? AND id_articulo=?");
+        
+        stmt_cantidad.setInt(1, p.id_usuario);
+        stmt_cantidad.setInt(2, p.id_articulo);
+        
+        ResultSet rs_cantidad = stmt_cantidad.executeQuery();
+        
+        // Si no existe el artículo en el carrito, devolver error
+        if (!rs_cantidad.next())
+        {
+          conexion.rollback();
+          return Response.status(400).entity(j.toJson(new Error("El artículo no existe en el carrito de compra"))).build();
+        }
+        
+        // Obtener la cantidad que se devolverá al stock
+        int cantidad_a_devolver = rs_cantidad.getInt("cantidad");
+        rs_cantidad.close();
+        stmt_cantidad.close();
+        
+        // Actualizar el stock (devolver los artículos)
+        PreparedStatement stmt_update = conexion.prepareStatement(
+          "UPDATE stock SET cantidad = cantidad + ? WHERE id_articulo = ?");
+        
+        stmt_update.setInt(1, cantidad_a_devolver);
+        stmt_update.setInt(2, p.id_articulo);
+        
+        int filas_actualizadas = stmt_update.executeUpdate();
+        stmt_update.close();
+        
+        // Verificar que el artículo exista en stock
+        if (filas_actualizadas == 0)
+        {
+          conexion.rollback();
+          return Response.status(400).entity(j.toJson(new Error("El artículo no existe en el inventario"))).build();
+        }
+        
+        // Eliminar el artículo del carrito
+        PreparedStatement stmt_delete = conexion.prepareStatement(
+          "DELETE FROM carrito_compra WHERE id_usuario=? AND id_articulo=?");
+        
+        stmt_delete.setInt(1, p.id_usuario);
+        stmt_delete.setInt(2, p.id_articulo);
+        
+        stmt_delete.executeUpdate();
+        stmt_delete.close();
+        
+        // Confirmar la transacción
+        conexion.commit();
+        
+        return Response.ok().build();
+      }
+      catch (Exception e)
+      {
+        // Deshacer la transacción en caso de error
+        conexion.rollback();
+        throw e;
+      }
+    }
+    catch (Exception e)
+    {
+      return Response.status(400).entity(j.toJson(new Error(e.getMessage()))).build();
+    }
+    finally
+    {
+      try
+      {
+        conexion.setAutoCommit(true);
+        conexion.close();
+      }
+      catch (Exception e)
+      {
+        // Ignorar errores al cerrar la conexión
+      }
+    }
+  }
+  @POST
+  @Path("elimina_carrito_compra")
+  @Consumes(MediaType.APPLICATION_JSON)
+  @Produces(MediaType.APPLICATION_JSON)
+  public Response eliminaCarritoCompra(String json) throws Exception
+  {
+    ParamEliminaCarrito p = (ParamEliminaCarrito) j.fromJson(json, ParamEliminaCarrito.class);
+    
+    Connection conexion = pool.getConnection();
+
+    // Validación de parámetros
+    if (p.id_usuario == null)
+      return Response.status(400).entity(j.toJson(new Error("Se debe proporcionar el ID de usuario"))).build();
+      
+    if (p.token == null || p.token.equals(""))
+      return Response.status(400).entity(j.toJson(new Error("Se debe proporcionar el token de autenticación"))).build();
+
+    try
+    {
+      // Verificar que el token corresponda al id_usuario
+      PreparedStatement stmt_token = conexion.prepareStatement("SELECT token FROM usuarios WHERE id_usuario=?");
+      try
+      {
+        stmt_token.setInt(1, p.id_usuario);
+        ResultSet rs = stmt_token.executeQuery();
+        
+        if (!rs.next())
+          return Response.status(401).entity(j.toJson(new Error("El usuario no existe"))).build();
+          
+        String token_guardado = rs.getString("token");
+        rs.close();
+        
+        if (token_guardado == null || !token_guardado.equals(p.token))
+          return Response.status(401).entity(j.toJson(new Error("Token inválido"))).build();
+      }
+      finally
+      {
+        stmt_token.close();
+      }
+
+      // Iniciar transacción
+      conexion.setAutoCommit(false);
+      
+      try
+      {
+        // Obtener todos los artículos en el carrito del usuario
+        PreparedStatement stmt_carrito = conexion.prepareStatement(
+          "SELECT id_articulo, cantidad FROM carrito_compra WHERE id_usuario=?");
+        
+        stmt_carrito.setInt(1, p.id_usuario);
+        ResultSet rs_carrito = stmt_carrito.executeQuery();
+        
+        // Preparar la sentencia para actualizar el stock
+        PreparedStatement stmt_update = conexion.prepareStatement(
+          "UPDATE stock SET cantidad = cantidad + ? WHERE id_articulo = ?");
+        
+        // Variable para verificar si había artículos en el carrito
+        boolean hayArticulos = false;
+        
+        // Devolver cada artículo al stock
+        while (rs_carrito.next())
+        {
+          hayArticulos = true;
+          int id_articulo = rs_carrito.getInt("id_articulo");
+          int cantidad = rs_carrito.getInt("cantidad");
+          
+          // Actualizar el stock
+          stmt_update.setInt(1, cantidad);
+          stmt_update.setInt(2, id_articulo);
+          stmt_update.executeUpdate();
+          
+          // Limpiar parámetros para la siguiente iteración
+          stmt_update.clearParameters();
+        }
+        
+        // Cerrar recursos
+        rs_carrito.close();
+        stmt_carrito.close();
+        stmt_update.close();
+        
+        // Eliminar todos los artículos del carrito del usuario
+        PreparedStatement stmt_delete = conexion.prepareStatement(
+          "DELETE FROM carrito_compra WHERE id_usuario=?");
+        
+        stmt_delete.setInt(1, p.id_usuario);
+        stmt_delete.executeUpdate();
+        stmt_delete.close();
+        
+        // Confirmar la transacción
+        conexion.commit();
+        
+        // Si no había artículos, informar al cliente
+        if (!hayArticulos) {
+          return Response.status(200).entity(j.toJson(new Respuesta("El carrito ya estaba vacío"))).build();
+        }
+        
+        return Response.ok().build();
+      }
+      catch (Exception e)
+      {
+        // Deshacer la transacción en caso de error
+        conexion.rollback();
+        throw e;
+      }
+    }
+    catch (Exception e)
+    {
+      return Response.status(400).entity(j.toJson(new Error(e.getMessage()))).build();
+    }
+    finally
+    {
+      try
+      {
+        conexion.setAutoCommit(true);
+        conexion.close();
+      }
+      catch (Exception e)
+      {
+        // Ignorar errores al cerrar la conexión
+      }
+    }
+  }
+
+  // Clase para respuestas informativas
+  class Respuesta
+  {
+    String mensaje;
+    
+    public Respuesta(String mensaje)
+    {
+      this.mensaje = mensaje;
+    }
+  }
+
+  @POST
+  @Path("login")
+  @Consumes(MediaType.APPLICATION_JSON)
+  @Produces(MediaType.APPLICATION_JSON)
+  public Response login(String json) throws Exception
+  {
+    ParamLogin p = (ParamLogin) j.fromJson(json, ParamLogin.class);
+    
+    // Validación de parámetros
+    if (p.email == null || p.email.equals(""))
+      return Response.status(400).entity(j.toJson(new Error("Se debe proporcionar el email"))).build();
+      
+    if (p.password == null || p.password.equals(""))
+      return Response.status(400).entity(j.toJson(new Error("Se debe proporcionar la contraseña"))).build();
+    
+    Connection conexion = pool.getConnection();
+    
+    try
+    {
+      // Buscar el usuario con el email y password proporcionados
+      PreparedStatement stmt = conexion.prepareStatement(
+        "SELECT id_usuario, nombre FROM usuarios WHERE email=? AND password=?");
+      
+      stmt.setString(1, p.email);
+      stmt.setString(2, p.password);
+      
+      ResultSet rs = stmt.executeQuery();
+      
+      // Si no se encuentra el usuario, devolver un token vacío
+      if (!rs.next())
+      {
+        rs.close();
+        stmt.close();
+        
+        RespuestaLogin respuesta = new RespuestaLogin();
+        respuesta.token = "";
+        respuesta.nombre = "";
+        
+        return Response.status(401).entity(j.toJson(respuesta)).build();
+      }
+      
+      // Obtener el ID y nombre del usuario
+      int id_usuario = rs.getInt("id_usuario");
+      String nombre = rs.getString("nombre");
+      
+      rs.close();
+      stmt.close();
+      
+      // Generar un token aleatorio de 20 caracteres
+      String token = generarTokenAleatorio(20);
+      
+      // Actualizar el token en la base de datos
+      PreparedStatement stmt_update = conexion.prepareStatement(
+        "UPDATE usuarios SET token=? WHERE id_usuario=?");
+      
+      stmt_update.setString(1, token);
+      stmt_update.setInt(2, id_usuario);
+      
+      stmt_update.executeUpdate();
+      stmt_update.close();
+      
+      // Crear la respuesta
+      RespuestaLogin respuesta = new RespuestaLogin();
+      respuesta.token = token;
+      respuesta.nombre = nombre;
+      
+      return Response.ok(j.toJson(respuesta)).build();
+    }
+    catch (Exception e)
+    {
+      return Response.status(500).entity(j.toJson(new Error(e.getMessage()))).build();
+    }
+    finally
+    {
+      conexion.close();
+    }
+  }
+
+  // Método para generar un token aleatorio
+  private String generarTokenAleatorio(int longitud)
+  {
+    // Caracteres que pueden formar parte del token
+    String caracteres = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
+    StringBuilder token = new StringBuilder();
+    
+    // Generar un objeto Random con semilla basada en el tiempo actual
+    Random random = new Random(System.currentTimeMillis());
+    
+    // Generar el token seleccionando caracteres aleatorios
+    for (int i = 0; i < longitud; i++)
+    {
+      int indice = random.nextInt(caracteres.length());
+      token.append(caracteres.charAt(indice));
+    }
+    
+    return token.toString();
+  }
 }
