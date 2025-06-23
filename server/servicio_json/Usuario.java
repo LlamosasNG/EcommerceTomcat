@@ -1,5 +1,6 @@
 /*
-  Carlos Pineda Guerrero, septiembre 2024
+  Autor: Carlos Pineda Guerrero, septiembre 2024
+  Modificado por: Gonzalez Llamosas Noe Ramses, junio 2025
 */
 
 package servicio_json;
@@ -10,6 +11,7 @@ public class Usuario
 {
   String email;
   String nombre;
+  String password;
   String apellido_paterno;
   String apellido_materno;
   Timestamp fecha_nacimiento;

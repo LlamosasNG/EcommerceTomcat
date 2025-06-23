@@ -1,0 +1,622 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=0"
+      charset="utf-8"
+    />
+    <meta name="author" content="Carlos Pineda Guerrero, septiembre 2024" />
+    <title>Comercio Electrónico</title>
+    <link rel="stylesheet" href="styles.css" />
+    <script src="WSClient.js"></script>
+    <script src="config.js"></script>
+    <script src="utils.js"></script>
+    <script src="auth.js"></script>
+    <script src="users.js"></script>
+    <script src="articles.js"></script>
+    <script src="cart.js"></script>
+  </head>
+  <body>
+    <div class="container">
+      <!-- Header con información del sistema -->
+      <header class="header">
+        <div class="system-info">
+          <div class="date-time">Fecha y Hora (UTC): 2025-06-05 18:45:02</div>
+          <div class="user-info">
+            <div id="login-placeholder">Usuario: Invitado</div>
+            <div id="login-status" style="display: none">
+              Usuario: <span id="user-display">Usuario</span>
+            </div>
+          </div>
+        </div>
+      </header>
+
+      <!-- Pantalla de login -->
+      <div id="login" class="screen" style="display: none">
+        <div class="card">
+          <h2>Iniciar Sesión</h2>
+          <form class="form">
+            <div class="form-group">
+              <label>Email *</label>
+              <input
+                type="email"
+                id="login_email"
+                class="form-input"
+                required
+              />
+            </div>
+            <div class="form-group">
+              <label>Contraseña *</label>
+              <input
+                type="password"
+                id="login_password"
+                class="form-input"
+                required
+              />
+            </div>
+            <div class="form-actions">
+              <button type="button" onclick="login()" class="btn btn-primary">
+                Aceptar
+              </button>
+              <button
+                type="button"
+                onclick="cancelarLogin()"
+                class="btn btn-secondary"
+              >
+                Cancelar
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+
+      <!-- Pantalla de alta de usuario -->
+      <div id="alta_usuario" class="screen" style="display: none">
+        <div class="card">
+          <h2>Alta de Usuario</h2>
+          <form class="form">
+            <div class="form-group">
+              <label>Email *</label>
+              <input type="email" id="alta_email" class="form-input" required />
+            </div>
+            <div class="form-group">
+              <label>Contraseña *</label>
+              <input
+                type="password"
+                id="alta_password"
+                class="form-input"
+                required
+              />
+            </div>
+            <div class="form-row">
+              <div class="form-group">
+                <label>Nombre *</label>
+                <input
+                  type="text"
+                  id="alta_nombre"
+                  class="form-input"
+                  required
+                />
+              </div>
+              <div class="form-group">
+                <label>Apellido Paterno *</label>
+                <input
+                  type="text"
+                  id="alta_apellido_paterno"
+                  class="form-input"
+                  required
+                />
+              </div>
+            </div>
+            <div class="form-group">
+              <label>Apellido Materno</label>
+              <input
+                type="text"
+                id="alta_apellido_materno"
+                class="form-input"
+              />
+            </div>
+            <div class="form-row">
+              <div class="form-group">
+                <label>Fecha de Nacimiento *</label>
+                <input
+                  type="datetime-local"
+                  id="alta_fecha_nacimiento"
+                  class="form-input"
+                  required
+                />
+              </div>
+              <div class="form-group">
+                <label>Teléfono</label>
+                <input type="tel" id="alta_telefono" class="form-input" />
+              </div>
+            </div>
+            <div class="form-group">
+              <label>Género</label>
+              <select id="alta_genero" class="form-input">
+                <option value="">Seleccionar...</option>
+                <option value="Masculino">Masculino</option>
+                <option value="Femenino">Femenino</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label>Foto de Perfil</label>
+              <div class="photo-upload">
+                <img
+                  id="alta_imagen"
+                  class="preview-image"
+                  src="usuario_sin_foto.png"
+                  alt="Vista previa"
+                />
+                <input
+                  type="file"
+                  class="file-input"
+                  onchange="readSingleFile(files,get('alta_imagen'))"
+                  accept="image/*"
+                />
+              </div>
+            </div>
+            <div class="form-actions">
+              <button type="button" onclick="alta()" class="btn btn-primary">
+                Agregar Usuario
+              </button>
+              <button
+                type="button"
+                onclick="limpia_alta()"
+                class="btn btn-secondary"
+              >
+                Limpiar
+              </button>
+              <button
+                type="button"
+                onclick="oculta_pantalla('alta_usuario')"
+                class="btn btn-outline"
+              >
+                Regresar
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+
+      <!-- Pantalla de consulta de usuario -->
+      <div id="consulta_usuario" class="screen" style="display: none">
+        <div class="card">
+          <div id="encabezado_consulta">
+            <h2>Consulta Usuario</h2>
+          </div>
+          <div id="encabezado_modifica" style="display: none">
+            <h2>Modificar Usuario</h2>
+          </div>
+
+          <form class="form">
+            <div class="form-group">
+              <label>Email *</label>
+              <input
+                type="email"
+                id="consulta_email"
+                class="form-input"
+                required
+              />
+            </div>
+
+            <div id="modifica_usuario" style="display: none">
+              <div class="form-group">
+                <label>Contraseña *</label>
+                <input
+                  type="password"
+                  id="consulta_password"
+                  class="form-input"
+                  required
+                />
+              </div>
+              <div class="form-row">
+                <div class="form-group">
+                  <label>Nombre *</label>
+                  <input
+                    type="text"
+                    id="consulta_nombre"
+                    class="form-input"
+                    required
+                  />
+                </div>
+                <div class="form-group">
+                  <label>Apellido Paterno *</label>
+                  <input
+                    type="text"
+                    id="consulta_apellido_paterno"
+                    class="form-input"
+                    required
+                  />
+                </div>
+              </div>
+              <div class="form-group">
+                <label>Apellido Materno</label>
+                <input
+                  type="text"
+                  id="consulta_apellido_materno"
+                  class="form-input"
+                />
+              </div>
+              <div class="form-row">
+                <div class="form-group">
+                  <label>Fecha de Nacimiento *</label>
+                  <input
+                    type="datetime-local"
+                    id="consulta_fecha_nacimiento"
+                    class="form-input"
+                    required
+                  />
+                </div>
+                <div class="form-group">
+                  <label>Teléfono</label>
+                  <input type="tel" id="consulta_telefono" class="form-input" />
+                </div>
+              </div>
+              <div class="form-group">
+                <label>Género</label>
+                <select id="consulta_genero" class="form-input">
+                  <option value="">Seleccionar...</option>
+                  <option value="Masculino">Masculino</option>
+                  <option value="Femenino">Femenino</option>
+                </select>
+              </div>
+              <div class="form-group">
+                <label>Foto de Perfil</label>
+                <div class="photo-upload">
+                  <img
+                    id="consulta_imagen"
+                    class="preview-image"
+                    src="usuario_sin_foto.png"
+                    alt="Vista previa"
+                  />
+                  <input
+                    type="file"
+                    id="consulta_file"
+                    class="file-input"
+                    onchange="readSingleFile(files,get('consulta_imagen'))"
+                    accept="image/*"
+                  />
+                  <button
+                    type="button"
+                    onclick="quita_foto()"
+                    class="btn btn-outline btn-sm"
+                  >
+                    Quitar foto
+                  </button>
+                </div>
+              </div>
+              <button
+                type="button"
+                onclick="modifica()"
+                class="btn btn-primary"
+              >
+                Guardar Cambios
+              </button>
+            </div>
+
+            <div id="boton_consulta">
+              <button
+                type="button"
+                onclick="consulta()"
+                class="btn btn-primary"
+              >
+                Buscar Usuario
+              </button>
+            </div>
+
+            <div class="form-actions">
+              <button
+                type="button"
+                onclick="cierra_pantalla_consulta()"
+                class="btn btn-outline"
+              >
+                Regresar
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+
+      <!-- Pantalla de borrar usuario -->
+      <div id="borra_usuario" class="screen" style="display: none">
+        <div class="card">
+          <h2>Eliminar Usuario</h2>
+          <form class="form">
+            <div class="form-group">
+              <label>Email *</label>
+              <input
+                type="email"
+                id="borra_email"
+                class="form-input"
+                required
+              />
+            </div>
+            <div class="form-actions">
+              <button type="button" onclick="borra()" class="btn btn-danger">
+                Eliminar Usuario
+              </button>
+              <button
+                type="button"
+                onclick="oculta_pantalla('borra_usuario')"
+                class="btn btn-outline"
+              >
+                Regresar
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+
+      <!-- Pantalla de captura de artículos -->
+      <div id="captura_articulo" class="screen" style="display: none">
+        <div class="card">
+          <h2>Captura de Artículo</h2>
+          <form class="form">
+            <div class="form-group">
+              <label>Nombre *</label>
+              <input
+                type="text"
+                id="articulo_nombre"
+                class="form-input"
+                required
+              />
+            </div>
+            <div class="form-group">
+              <label>Descripción</label>
+              <textarea
+                id="articulo_descripcion"
+                class="form-textarea"
+                rows="4"
+              ></textarea>
+            </div>
+            <div class="form-row">
+              <div class="form-group">
+                <label>Precio *</label>
+                <input
+                  type="number"
+                  id="articulo_precio"
+                  class="form-input"
+                  step="0.01"
+                  min="0"
+                  required
+                />
+              </div>
+              <div class="form-group">
+                <label>Cantidad *</label>
+                <input
+                  type="number"
+                  id="articulo_cantidad"
+                  class="form-input"
+                  min="0"
+                  required
+                />
+              </div>
+            </div>
+            <div class="form-group">
+              <label>Imagen del Artículo</label>
+              <div class="photo-upload">
+                <img
+                  id="articulo_imagen"
+                  class="preview-image"
+                  src="articulo_sin_foto.png"
+                  alt="Vista previa"
+                />
+                <input
+                  type="file"
+                  id="articulo_file"
+                  class="file-input"
+                  onchange="readArticuloFile(files,get('articulo_imagen'))"
+                  accept="image/*"
+                />
+                <button
+                  type="button"
+                  onclick="quita_foto_articulo()"
+                  class="btn btn-outline btn-sm"
+                >
+                  Quitar foto
+                </button>
+              </div>
+            </div>
+            <div class="form-actions">
+              <button
+                type="button"
+                onclick="alta_articulo()"
+                class="btn btn-primary"
+              >
+                Guardar Artículo
+              </button>
+              <button
+                type="button"
+                onclick="limpia_articulo()"
+                class="btn btn-secondary"
+              >
+                Limpiar
+              </button>
+              <button
+                type="button"
+                onclick="oculta_pantalla('captura_articulo')"
+                class="btn btn-outline"
+              >
+                Regresar
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+
+      <!-- Pantalla de compra de artículos -->
+      <div id="compra_articulos" class="screen" style="display: none">
+        <div class="card">
+          <h2>Compra de Artículos</h2>
+
+          <!-- Botón del carrito -->
+          <div class="cart-header">
+            <button
+              id="btn_carrito"
+              class="btn-cart"
+              onclick="mostrar_pantalla_carrito()"
+              title="Carrito vacío"
+            >
+              🛒 Carrito de compra
+              <span id="carrito_badge" class="cart-badge">0</span>
+            </button>
+          </div>
+
+          <!-- Búsqueda de artículos -->
+          <div class="search-section">
+            <h3>Buscar Artículos</h3>
+            <div class="search-bar">
+              <input
+                type="text"
+                id="busqueda_articulo"
+                placeholder="Ingrese palabra clave..."
+                class="search-input"
+              />
+              <button onclick="buscar_articulos()" class="btn btn-primary">
+                🔍 Buscar
+              </button>
+            </div>
+          </div>
+
+          <!-- Lista de artículos -->
+          <div class="articles-section">
+            <h3>Artículos Disponibles</h3>
+            <div id="lista_articulos" class="articles-grid">
+              <!-- Los artículos se cargarán aquí dinámicamente -->
+            </div>
+          </div>
+
+          <div class="form-actions">
+            <button
+              type="button"
+              onclick="oculta_pantalla('compra_articulos')"
+              class="btn btn-outline"
+            >
+              Regresar
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Pantalla del carrito -->
+      <div id="articulos_carrito" class="screen" style="display: none">
+        <div class="card">
+          <h2>🛒 Artículos en el carrito</h2>
+
+          <div id="articulos_carrito_items" class="cart-items">
+            <!-- Los artículos del carrito se cargarán aquí -->
+          </div>
+
+          <div id="carrito_total_detalle" class="cart-total">Total: $0.00</div>
+
+          <div class="cart-actions">
+            <button
+              id="btn_seguir_comprando"
+              type="button"
+              onclick="seguir_comprando()"
+              class="btn btn-outline"
+            >
+              ← Seguir Comprando
+            </button>
+            <button
+              id="btn_eliminar_carrito"
+              type="button"
+              onclick="eliminar_carrito()"
+              class="btn btn-danger"
+            >
+              🗑️ Eliminar Carrito
+            </button>
+            <button
+              id="btn_finalizar_compra"
+              type="button"
+              onclick="finalizar_compra()"
+              class="btn btn-success"
+            >
+              ✓ Finalizar Compra
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Menú principal -->
+      <div id="menu" class="menu">
+        <div class="menu-card">
+          <h1>Comercio Electrónico</h1>
+          <div class="menu-buttons">
+            <button
+              type="button"
+              onclick="limpia_alta();muestra_pantalla('alta_usuario')"
+              class="btn btn-primary menu-btn"
+            >
+              👤 Alta Usuario
+            </button>
+            <button
+              type="button"
+              onclick="limpia_consulta();muestra_pantalla('consulta_usuario')"
+              class="btn btn-primary menu-btn"
+            >
+              🔍 Consulta Usuario
+            </button>
+            <button
+              type="button"
+              onclick="limpia_borra();muestra_pantalla('borra_usuario')"
+              class="btn btn-danger menu-btn"
+            >
+              🗑️ Eliminar Usuario
+            </button>
+            <button
+              type="button"
+              onclick="abrirCapturaArticulo()"
+              class="btn btn-success menu-btn"
+            >
+              📦 Captura de Artículo
+            </button>
+            <button
+              type="button"
+              onclick="abrirCompraArticulos()"
+              class="btn btn-info menu-btn"
+            >
+              🛍️ Compra de Artículo
+            </button>
+            <button
+              type="button"
+              id="btn_logout"
+              onclick="logout()"
+              class="btn btn-warning menu-btn"
+              style="display: none"
+            >
+              🚪 Cerrar Sesión
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Scripts de inicialización -->
+    <script>
+      // Inicialización de la aplicación
+      document.addEventListener('DOMContentLoaded', function () {
+        actualizarInfoUsuario()
+        actualizarBotonLogout()
+
+        // Añadir evento para búsqueda con Enter
+        const busquedaInput = document.getElementById('busqueda_articulo')
+        if (busquedaInput) {
+          busquedaInput.addEventListener('keyup', function (event) {
+            if (event.key === 'Enter') {
+              buscar_articulos()
+            }
+          })
+        }
+      })
+
+      // Función para cancelar login
+      function cancelarLogin() {
+        muestra('menu')
+        oculta('login')
+      }
+    </script>
+  </body>
+</html>

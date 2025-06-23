@@ -2,29 +2,30 @@
   Servicio.java
   Servicio web tipo REST
   Recibe parámetros utilizando JSON
-  Carlos Pineda Guerrero, septiembre 2024
+  Autor: Carlos Pineda Guerrero, septiembre 2024
+  Modificado por: Gonzalez Llamosas Noe Ramses, junio 2025
 */
 
 package servicio_json;
 
-import javax.ws.rs.GET;
-import javax.ws.rs.POST;
-import javax.ws.rs.Path;
-import javax.ws.rs.Consumes;
-import javax.ws.rs.Produces;
-import javax.ws.rs.core.MediaType;
-import javax.ws.rs.QueryParam;
-import javax.ws.rs.FormParam;
-import javax.ws.rs.core.Response;
+import java.sql.Connection;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
+import java.sql.Types;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 
-import java.sql.*;
-import javax.sql.DataSource;
 import javax.naming.Context;
 import javax.naming.InitialContext;
-
-import java.text.SimpleDateFormat;
-import java.util.ArrayList;
-import java.util.List;
+import javax.sql.DataSource;
+import javax.ws.rs.Consumes;
+import javax.ws.rs.POST;
+import javax.ws.rs.Path;
+import javax.ws.rs.Produces;
+import javax.ws.rs.core.MediaType;
+import javax.ws.rs.core.Response;
 
 import com.google.gson.*;
 
@@ -67,6 +68,9 @@ public class Servicio
     if (usuario.email == null || usuario.email.equals(""))
       return Response.status(400).entity(j.toJson(new Error("Se debe ingresar el email"))).build();
 
+    if (usuario.password == null || usuario.password.equals(""))
+      return Response.status(400).entity(j.toJson(new Error("Se debe ingresar la contraseña"))).build();
+
     if (usuario.nombre == null || usuario.nombre.equals(""))
       return Response.status(400).entity(j.toJson(new Error("Se debe ingresar el nombre"))).build();
 
@@ -80,30 +84,40 @@ public class Servicio
     {
       conexion.setAutoCommit(false);
 
-      PreparedStatement stmt_1 = conexion.prepareStatement("INSERT INTO usuarios(id_usuario,email,nombre,apellido_paterno,apellido_materno,fecha_nacimiento,telefono,genero) VALUES (0,?,?,?,?,?,?,?)");
- 
+      // Generar un token aleatorio de 10 caracteres
+      String token = generarTokenAleatorio(10);
+
+      // Modificado para incluir password y token en la inserción
+      PreparedStatement stmt_1 = conexion.prepareStatement(
+        "INSERT INTO usuarios(id_usuario,email,password,nombre,apellido_paterno,apellido_materno,fecha_nacimiento,telefono,genero,token) VALUES (0,?,?,?,?,?,?,?,?,?)"
+      );
+  
       try
       {
-        stmt_1.setString(1,usuario.email);
-        stmt_1.setString(2,usuario.nombre);
-        stmt_1.setString(3,usuario.apellido_paterno);
+        stmt_1.setString(1, usuario.email);
+        stmt_1.setString(2, usuario.password);
+        stmt_1.setString(3, usuario.nombre);
+        stmt_1.setString(4, usuario.apellido_paterno);
 
         if (usuario.apellido_materno != null)
-          stmt_1.setString(4,usuario.apellido_materno);
+          stmt_1.setString(5, usuario.apellido_materno);
         else
-          stmt_1.setNull(4,Types.VARCHAR);
+          stmt_1.setNull(5, Types.VARCHAR);
 
-        stmt_1.setTimestamp(5,usuario.fecha_nacimiento);
+        stmt_1.setTimestamp(6, usuario.fecha_nacimiento);
 
         if (usuario.telefono != null)
-          stmt_1.setLong(6,usuario.telefono);
+          stmt_1.setLong(7, usuario.telefono);
         else
-          stmt_1.setNull(6,Types.BIGINT);
+          stmt_1.setNull(7, Types.BIGINT);
 
         if (usuario.genero != null)
-          stmt_1.setString(7,usuario.genero);
+          stmt_1.setString(8, usuario.genero);
         else
-          stmt_1.setNull(7,Types.CHAR);
+          stmt_1.setNull(8, Types.CHAR);
+          
+        // Agregamos el token a la inserción
+        stmt_1.setString(9, token);
 
         stmt_1.executeUpdate();
       }
@@ -117,7 +131,7 @@ public class Servicio
         PreparedStatement stmt_2 = conexion.prepareStatement("INSERT INTO fotos_usuarios(id_foto,foto,id_usuario) VALUES (0,?,LAST_INSERT_ID())");
         try
         {
-          stmt_2.setBytes(1,usuario.foto);
+          stmt_2.setBytes(1, usuario.foto);
           stmt_2.executeUpdate();
         }
         finally
@@ -153,7 +167,8 @@ public class Servicio
 
     try
     {
-      PreparedStatement stmt_1 = conexion.prepareStatement("SELECT a.email,a.nombre,a.apellido_paterno,a.apellido_materno,a.fecha_nacimiento,a.telefono,a.genero,b.foto FROM usuarios a LEFT OUTER JOIN fotos_usuarios b ON a.id_usuario=b.id_usuario WHERE email=?");
+      // Modificado para incluir password en la consulta
+      PreparedStatement stmt_1 = conexion.prepareStatement("SELECT a.email,a.password,a.nombre,a.apellido_paterno,a.apellido_materno,a.fecha_nacimiento,a.telefono,a.genero,b.foto FROM usuarios a LEFT OUTER JOIN fotos_usuarios b ON a.id_usuario=b.id_usuario WHERE email=?");
       try
       {
         stmt_1.setString(1,email);
@@ -165,13 +180,14 @@ public class Servicio
           {
             Usuario r = new Usuario();
             r.email = rs.getString(1);
-            r.nombre = rs.getString(2);
-            r.apellido_paterno = rs.getString(3);
-            r.apellido_materno = rs.getString(4);
-            r.fecha_nacimiento = rs.getTimestamp(5);
-            r.telefono = rs.getObject(6) != null ? rs.getLong(6) : null;
-            r.genero = rs.getString(7);
-	    r.foto = rs.getBytes(8);
+            r.password = rs.getString(2); // Añadido para obtener la contraseña
+            r.nombre = rs.getString(3);   // Índice actualizado
+            r.apellido_paterno = rs.getString(4); // Índice actualizado
+            r.apellido_materno = rs.getString(5); // Índice actualizado
+            r.fecha_nacimiento = rs.getTimestamp(6); // Índice actualizado
+            r.telefono = rs.getObject(7) != null ? rs.getLong(7) : null; // Índice actualizado
+            r.genero = rs.getString(8);  // Índice actualizado
+            r.foto = rs.getBytes(9);     // Índice actualizado
             return Response.ok().entity(j.toJson(r)).build();
           }
           return Response.status(400).entity(j.toJson(new Error("El email no existe"))).build();
@@ -825,6 +841,7 @@ public class Servicio
       }
     }
   }
+
   @POST
   @Path("elimina_carrito_compra")
   @Consumes(MediaType.APPLICATION_JSON)
@@ -966,70 +983,55 @@ public class Servicio
   public Response login(String json) throws Exception
   {
     ParamLogin p = (ParamLogin) j.fromJson(json, ParamLogin.class);
-    
-    // Validación de parámetros
-    if (p.email == null || p.email.equals(""))
-      return Response.status(400).entity(j.toJson(new Error("Se debe proporcionar el email"))).build();
-      
-    if (p.password == null || p.password.equals(""))
-      return Response.status(400).entity(j.toJson(new Error("Se debe proporcionar la contraseña"))).build();
-    
+    String email = p.email;
+    String password = p.password;
+
     Connection conexion = pool.getConnection();
-    
+
     try
     {
-      // Buscar el usuario con el email y password proporcionados
+      // Modificada la consulta para obtener id_usuario y nombre junto con el token
       PreparedStatement stmt = conexion.prepareStatement(
-        "SELECT id_usuario, nombre FROM usuarios WHERE email=? AND password=?");
+        "SELECT id_usuario, token, nombre FROM usuarios WHERE email=? AND password=?"
+      );
       
-      stmt.setString(1, p.email);
-      stmt.setString(2, p.password);
-      
-      ResultSet rs = stmt.executeQuery();
-      
-      // Si no se encuentra el usuario, devolver un token vacío
-      if (!rs.next())
+      try
       {
-        rs.close();
-        stmt.close();
-        
-        RespuestaLogin respuesta = new RespuestaLogin();
-        respuesta.token = "";
-        respuesta.nombre = "";
-        
-        return Response.status(401).entity(j.toJson(respuesta)).build();
+        stmt.setString(1, email);
+        stmt.setString(2, password);
+
+        ResultSet rs = stmt.executeQuery();
+        try
+        {
+          if (rs.next())
+          {
+            // Creamos un objeto con id_usuario, token y nombre
+            Map<String, Object> respuesta = new HashMap<>();
+            respuesta.put("id_usuario", rs.getInt(1));
+            respuesta.put("token", rs.getString(2));
+            respuesta.put("nombre", rs.getString(3));
+            
+            return Response.ok().entity(j.toJson(respuesta)).build();
+          }
+          
+          // Si no hay coincidencia, enviamos token vacío
+          Map<String, Object> respuesta = new HashMap<>();
+          respuesta.put("token", "");
+          return Response.ok().entity(j.toJson(respuesta)).build();
+        }
+        finally
+        {
+          rs.close();
+        }
       }
-      
-      // Obtener el ID y nombre del usuario
-      int id_usuario = rs.getInt("id_usuario");
-      String nombre = rs.getString("nombre");
-      
-      rs.close();
-      stmt.close();
-      
-      // Generar un token aleatorio de 20 caracteres
-      String token = generarTokenAleatorio(20);
-      
-      // Actualizar el token en la base de datos
-      PreparedStatement stmt_update = conexion.prepareStatement(
-        "UPDATE usuarios SET token=? WHERE id_usuario=?");
-      
-      stmt_update.setString(1, token);
-      stmt_update.setInt(2, id_usuario);
-      
-      stmt_update.executeUpdate();
-      stmt_update.close();
-      
-      // Crear la respuesta
-      RespuestaLogin respuesta = new RespuestaLogin();
-      respuesta.token = token;
-      respuesta.nombre = nombre;
-      
-      return Response.ok(j.toJson(respuesta)).build();
+      finally
+      {
+        stmt.close();
+      }
     }
     catch (Exception e)
     {
-      return Response.status(500).entity(j.toJson(new Error(e.getMessage()))).build();
+      return Response.status(400).entity(j.toJson(new Error(e.getMessage()))).build();
     }
     finally
     {
@@ -1044,13 +1046,11 @@ public class Servicio
     String caracteres = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
     StringBuilder token = new StringBuilder();
     
-    // Generar un objeto Random con semilla basada en el tiempo actual
-    Random random = new Random(System.currentTimeMillis());
-    
     // Generar el token seleccionando caracteres aleatorios
     for (int i = 0; i < longitud; i++)
     {
-      int indice = random.nextInt(caracteres.length());
+      // Usar Math.random() para generar un índice aleatorio
+      int indice = (int)(Math.random() * caracteres.length());
       token.append(caracteres.charAt(indice));
     }
     
